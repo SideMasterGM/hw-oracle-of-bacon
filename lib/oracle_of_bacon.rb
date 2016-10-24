@@ -1,4 +1,4 @@
-require 'byebug'                # optional, may be helpful
+require 'helpful'              # optional, may be helpful
 require 'open-uri'              # allows open('http://...') to return body
 require 'cgi'                   # for escaping URIs
 require 'nokogiri'              # XML parser
@@ -20,11 +20,14 @@ class OracleOfBacon
   validate :from_does_not_equal_to
 
   def from_does_not_equal_to
-    # YOUR CODE HERE
+     @errors.add :from, 'From cannot be the same as To' if @from == @to 
   end
 
-  def initialize(api_key='')
-    # your code here
+  def initialize(api_key='38b99ce9ec87')
+    @api_key = api_key
+    @from = "Kevin Bacon"
+    @to = "Kevin Bacon"
+    @errors = ActiveModel::Errors.new(self)
   end
 
   def find_connections
@@ -38,17 +41,15 @@ class OracleOfBacon
       #  but keep the original error message
       # your code here
     end
-    # your code here: create the OracleOfBacon::Response object
+    @response = Response.new(xml)
   end
 
   def make_uri_from_arguments
-    # your code here: set the @uri attribute to properly-escaped URI
-    #   constructed from the @from, @to, @api_key arguments
+    @uri = "http://oracleofbacon.org/p=#{@api_key}&a=#{CGI.escape(@from)}&b=#{CGI.escape(@to)}"
   end
       
   class Response
     attr_reader :type, :data
-    # create a Response object from a string of XML markup.
     def initialize(xml)
       @doc = Nokogiri::XML(xml)
       parse_response
@@ -59,10 +60,24 @@ class OracleOfBacon
     def parse_response
       if ! @doc.xpath('/error').empty?
         parse_error_response
-      # your code here: 'elsif' clauses to handle other responses
-      # for responses not matching the 3 basic types, the Response
-      # object should have type 'unknown' and data 'unknown response'         
+      elsif @doc.xpath('/spellcheck').any?
+        parse_spellcheck
+      elsif @doc.xpath('/link').any?
+        parse_graph
+      else 
+        @type = :unknown
+        @data = "unknown response"        
       end
+    end
+    def parse_graph
+      @type = :graph
+      actors = @doc.xpath('//actor').map{ |node| node.text}
+      movies = @doc.xpath('//movie').map{ |node| node.text}
+      @data = actors.zip(movies).flatten.compact
+    end
+    def parse_spellcheck
+      @type = :spellcheck
+      @data = @doc.xpath('//match').map{ |node| node.text}
     end
     def parse_error_response
       @type = :error
@@ -71,3 +86,27 @@ class OracleOfBacon
   end
 end
 
+oob = OracleOfBacon.new('38b99ce9ec87')
+
+# connect Laurence Olivier to Kevin Bacon
+oob.from = 'Laurence Olivier'
+oob.find_connections
+oob.response.type      # => :graph
+oob.response.data      # => ['Kevin Bacon', 'The Big Picture (1989)', 'Eddie Albert (I)', 'Carrie (1952)', 'Laurence Olivier']
+
+# connect Carrie Fisher (I) to Ian McKellen
+oob.from = 'Carrie Fisher (I)'
+oob.to = 'Ian McKellen'
+oob.find_connections
+oob.response.data      # => ['Ian McKellen', 'Doogal (2006)', ...etc]
+
+# with multiple matches
+oob.to = 'Anthony Perkins'
+oob.find_connections
+oob.response.type      # => :spellcheck
+oob.response.data      # => ['Anthony Perkins (I)', ...33 more variations of the name]
+# with bad key
+oob = OracleOfBacon.new('known_bad_key')
+oob.find_connections
+oob.response.type      # => :error
+oob.response.data      # => 'Unauthorized access'
