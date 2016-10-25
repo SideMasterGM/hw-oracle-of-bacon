@@ -86,6 +86,7 @@ class OracleOfBacon
   end
 end
 
+#Esto no debería ir aquí...
 oob = OracleOfBacon.new('38b99ce9ec87')
 
 # connect Laurence Olivier to Kevin Bacon
